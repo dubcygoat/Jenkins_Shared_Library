@@ -1,0 +1,69 @@
+// Define COLOR_MAP
+def COLOR_MAP = [
+    'FAILURE': 'danger',
+    'SUCCESS': 'good'
+]
+
+pipeline {
+    agent any
+    parameters {
+        choice(name: 'action', choices: ['create', 'delete'], description: 'Select create or destroy.')
+    }
+    stages {
+        stage('clean workspace') {
+            steps {
+                cleanWs()
+            }
+        }
+        stage('checkout from Git') {
+            steps {
+                checkout([$class: 'GitSCM', branches: [[name: 'main']], userRemoteConfigs: [[url: 'https://github.com/dubcygoat/Youtube-clone-app.git']]])
+            }
+        }
+        
+    tools{
+        jdk 'jdk17'
+        nodejs 'node16'
+    }
+    environment {
+        SCANNER_HOME=tool 'sonar-scanner'
+          }
+        }
+        stage('sonarqube Analysis'){
+               when { expression { params.action == 'create'}}    
+                 steps{
+                    sonarqubeAnalysis()
+                 }
+        }
+        stage('sonarqube QualitGate'){
+        when { expression { params.action == 'create'}}    
+            steps{
+                script{
+                    def credentialsId = 'Sonar-token'
+                    qualityGate(credentialsId)
+                }
+            }
+        }
+        stage('Npm'){
+        when { expression { params.action == 'create'}}    
+            steps{
+                npmInstall()
+            }
+        }
+    }
+    post {
+        always {
+            echo 'Slack Notifications'
+            slackSend (
+                channel: 'jenkins',
+                color: COLOR_MAP[currentBuild.currentResult] ?: 'warning', // Default color if build result not found in COLOR_MAP
+                message: "*${currentBuild.currentResult}:* Job ${env.JOB_NAME} \n build ${env.BUILD_NUMBER} \n More info at: ${env.BUILD_URL}"
+            )
+        }
+    }
+    stage('Npm'){
+        when { expression { params.action == 'create'}}    
+        steps{
+            npmInstall()
+        }
+    }
